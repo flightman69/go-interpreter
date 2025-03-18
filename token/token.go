@@ -39,8 +39,12 @@ const (
 	BANG     = "!"
 	ASTERISK = "*"
 	SLASH    = "/"
-	LT       = "<"
-	GT       = ">"
+
+	// comparison operators
+	LT     = "<"
+	GT     = ">"
+	EQ     = "=="
+	NOT_EQ = "!="
 
 	// special characters
 	COMMA     = ","
