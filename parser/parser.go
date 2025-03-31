@@ -6,6 +6,8 @@ import (
 	"github.com/flightman69/go-interpreter/ast"
 	"github.com/flightman69/go-interpreter/lexer"
 	"github.com/flightman69/go-interpreter/token"
+
+	"strconv"
 )
 
 const (
@@ -44,6 +46,12 @@ func New(l *lexer.Lexer) *Parser {
 	p.nextToken()
 	p.nextToken()
 
+	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
+	p.registerPrefix(token.IDENT, p.parseIdentifier)
+	p.registerPrefix(token.INT, p.parseIntegerLiteral)
+	p.registerPrefix(token.MINUS, p.parsePrefixExpression)
+	p.registerPrefix(token.BANG, p.parsePrefixExpression)
+
 	return p
 }
 
@@ -57,7 +65,7 @@ func (p *Parser) ParseProgram() *ast.Program {
 	program.Statements = []ast.Statement{}
 
 	for p.curToken.Type != token.EOF {
-		stmt := p.ParseStatement()
+		stmt := p.parseStatement()
 		if stmt != nil {
 			program.Statements = append(program.Statements, stmt)
 		}
@@ -68,7 +76,7 @@ func (p *Parser) ParseProgram() *ast.Program {
 	return program
 }
 
-func (p *Parser) ParseStatement() ast.Statement {
+func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
 	case token.LET:
 		return p.parseLetStatement()
@@ -130,12 +138,47 @@ func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 func (p *Parser) parseExpression(precedence int) ast.Expression {
 	prefix := p.prefixParseFns[p.curToken.Type]
 	if prefix == nil {
+		p.noPrefixParseFnError(p.curToken.Type)
 		return nil
 	}
 
 	leftExp := prefix()
 
 	return leftExp
+}
+
+func (p *Parser) parseIdentifier() ast.Expression {
+	return &ast.Identifier{
+		Token: p.curToken, Value: p.curToken.Literal,
+	}
+}
+
+func (p *Parser) parseIntegerLiteral() ast.Expression {
+	lit := &ast.IntegerLiteral{Token: p.curToken}
+
+	value, err := strconv.ParseInt(p.curToken.Literal, 0, 64)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse %q as integer", p.curToken.Literal)
+		p.errors = append(p.errors, msg)
+		return nil
+	}
+
+	lit.Value = value
+
+	return lit
+}
+
+func (p *Parser) parsePrefixExpression() ast.Expression {
+	expression := &ast.PrefixExpression{
+		Token:    p.curToken,
+		Operator: p.curToken.Literal,
+	}
+
+	p.nextToken()
+
+	expression.Right = p.parseExpression(PREFIX)
+
+	return expression
 }
 
 func (p *Parser) curTokenIs(t token.TokenType) bool {
@@ -172,4 +215,9 @@ func (p *Parser) registerPrefix(tokenType token.TokenType, fn prefixParseFn) {
 
 func (p *Parser) registerInfix(tokenType token.TokenType, fn infixParseFn) {
 	p.infixParseFns[tokenType] = fn
+}
+
+func (p *Parser) noPrefixParseFnError(t token.TokenType) {
+	msg := fmt.Sprintf("no prefix parse function for %s found", t)
+	p.errors = append(p.errors, msg)
 }
